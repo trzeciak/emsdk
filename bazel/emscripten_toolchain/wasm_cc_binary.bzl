@@ -167,6 +167,10 @@ def _wasm_cc_binary_legacy_impl(ctx):
         executable = ctx.executable._wasm_binary_extractor,
     )
 
+    dwp_file = cc_target[DebugPackageInfo].dwp_file if DebugPackageInfo in cc_target else None
+    if dwp_file:
+        outputs.append(dwp_file)
+
     return [
         DefaultInfo(
             executable = ctx.outputs.wasm,

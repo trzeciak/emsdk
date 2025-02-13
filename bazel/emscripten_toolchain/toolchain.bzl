@@ -72,12 +72,14 @@ def _impl(ctx):
 
     emscripten_dir = ctx.attr.emscripten_binaries.label.workspace_root
     nodejs_path = ctx.file.nodejs_bin.path
+    emscripten_name = ctx.attr.emscripten_binaries.label.repo_name
 
     builtin_sysroot = emscripten_dir + "/emscripten/cache/sysroot"
 
     emcc_script = "emcc.%s" % ctx.attr.script_extension
     emcc_link_script = "emcc_link.%s" % ctx.attr.script_extension
     emar_script = "emar.%s" % ctx.attr.script_extension
+    emdwp_script = "emdwp-%s.%s" % (emscripten_name, ctx.attr.script_extension)
 
     ################################################################
     # Tools
@@ -87,6 +89,7 @@ def _impl(ctx):
     link_tool = tool(path = emcc_link_script)
     archive_tool = tool(path = emar_script)
     strip_tool = tool(path = "NOT_USED_STRIP_TOOL")
+    dwarf_tool = tool(path = emdwp_script) # TODO @unused
 
     #### Legacy tool paths (much of this is redundant with action_configs, but
     #### these are still used for some things)
@@ -99,6 +102,7 @@ def _impl(ctx):
         tool_path(name = "nm", path = "NOT_USED"),
         tool_path(name = "objdump", path = "/bin/false"),
         tool_path(name = "strip", path = "NOT_USED"),
+        tool_path(name = "dwp", path = emdwp_script),
     ]
 
     ################################################################
@@ -459,6 +463,34 @@ def _impl(ctx):
         ),
         feature(
             name = "wasm_standalone",
+        ),
+        # Support for debug fission. In short, debugging fission should:
+        #   * reduce linking time, RAM usage and disk usage  
+        #   * speed up incremental builds
+        #   * speed up debugger work (reduce startup and breakpoint time)
+        # (to use this, follow the --fission=yes flag)
+        # https://developer.chrome.com/blog/faster-wasm-debugging
+        # https://bazel.build/docs/user-manual#fission
+        feature(
+            name = "per_object_debug_info",
+            flag_sets = [
+                flag_set(
+                    actions = [
+                        ACTION_NAMES.c_compile,
+                        ACTION_NAMES.cpp_compile,
+                        ACTION_NAMES.cpp_module_codegen,
+                        ACTION_NAMES.assemble,
+                        ACTION_NAMES.preprocess_assemble,
+                    ],
+                    flag_groups = [
+                        flag_group(
+                            flags = ["-g", "-gsplit-dwarf", "-gdwarf-5", "-gpubnames"],
+                            expand_if_available = "per_object_debug_info_file",
+                        ),
+                    ],
+                ),
+            ],
+            enabled = True,
         ),
     ]
 
